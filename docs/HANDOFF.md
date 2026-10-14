@@ -73,11 +73,25 @@ and `NOTICES.md` must remain in source and packaged distributions.
 ## Current release status
 
 - Runtime dependency release: `runtime-deps-v1` is public and verified.
-- Run `38543813493` passed the complete quality gate, then exposed the draft-tag
-  issue described above.
-- The exact-tag workflow fix and 31/31 release contract tests pass locally.
-- The next step is to push the fix, rerun `v0.1.0-preview.1`, and record the
-  published native assets and checksums here.
+- Public application prerelease: `v0.1.0-preview.1`.
+- Release commit: `ca16866849e5fdef5aeeaac943361356808b17d8`.
+- GitHub Actions run `38547151639` passed the quality, draft, Windows, Linux,
+  macOS, and final verification/publish jobs.
+- Windows x64: `HyperGen-0.1.0-preview.1-Setup.exe`.
+- Linux x64: `HyperGen-x86_64.AppImage` and `HyperGen-amd64.deb`.
+- macOS arm64: `HyperGen-0.1.0-preview.1-arm64.dmg` and
+  `HyperGen-0.1.0-preview.1-arm64-mac.zip`.
+- Updater files, platform checksum files, runtime manifests, and split Windows
+  and Linux runtime archives are included in the same release.
+- Packages are intentionally unsigned for this preview.
+
+## Continuation
+
+Start from `main` in `G:\Hyper-Gen\LTX-Desktop`. Before the next release, bump
+the package version and release contract together, update the workflow tag and
+concurrency key, run the verification commands below, and dispatch
+`.github/workflows/release.yml` with the new version. Supply Windows and Apple
+signing credentials before changing the unsigned-release policy.
 
 ## Verification commands
 

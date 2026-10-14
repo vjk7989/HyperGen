@@ -70,9 +70,12 @@ with the backend.
 ### Distribution
 
 GitHub Actions is the only official package builder. Native jobs build unsigned
-Windows x64, Linux x64, and macOS arm64 packages, verify metadata and manifests,
-and publish one draft release only after all platforms pass. Self-update feeds
-and downloadable runtime dependencies point only to HyperGen releases.
+Windows x64, Linux x64, and macOS arm64 packages, upload them to one draft,
+verify metadata and manifests, and publish the release only after all platforms
+pass. The workflow materializes and verifies the Git tag before creating the
+draft because an unpublished GitHub draft does not create a fetchable tag.
+Self-update feeds and downloadable runtime dependencies point only to HyperGen
+releases.
 
 HyperGen sends no product telemetry. Network requests occur for explicit user
 features such as provider calls, model downloads, update checks, and Remote
@@ -88,3 +91,11 @@ internet mode.
 - Preview packages remain unsigned until signing credentials are supplied.
 - Legal notices and exact dependency names remain visible in their appropriate
   technical or legal contexts.
+
+## Implemented release
+
+`v0.1.0-preview.1` was built from commit
+`ca16866849e5fdef5aeeaac943361356808b17d8` by GitHub Actions run
+`38547151639`. The public prerelease contains verified Windows x64, Linux x64,
+and macOS arm64 packages plus updater metadata, runtime manifests, split runtime
+archives, and SHA-256 checksum files.

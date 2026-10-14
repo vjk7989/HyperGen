@@ -61,7 +61,8 @@ Prepared asset:
 - Runtime dependency release: `https://github.com/vjk7989/HyperGen/releases/tag/runtime-deps-v1`
 - Runtime asset public check: HTTP 200, 76,533,098 bytes
 
-The native preview workflow is the remaining release gate. This section will be updated with the Actions run, published package names, and release checksums after every platform succeeds.
+The native preview workflow completed successfully after the two diagnosed and
+repaired failures recorded below.
 
 ### Release run 38543293952
 
@@ -87,3 +88,25 @@ uses `--verify-tag`. A focused regression test verifies this ordering.
 
 - Release workflow contract tests: 31/31 passed
 - Formatting check for the regression test: passed
+
+### Release run 38547151639
+
+The corrected run completed successfully on 2026-10-14. The full quality gate,
+draft preparation, all three native platform jobs, and final hosted-release
+verification/publish job passed. The public tag, release target, and Git commit
+all resolve to `ca16866849e5fdef5aeeaac943361356808b17d8`.
+
+- Actions: `https://github.com/vjk7989/HyperGen/actions/runs/38547151639`
+- Release: `https://github.com/vjk7989/HyperGen/releases/tag/v0.1.0-preview.1`
+- State: published prerelease, not a draft
+- Windows x64 NSIS SHA-256: `7c4e3de2f7f392d37fd386a85ff9ecf72a2e8439ad3ed01df49d9c354f3555f2`
+- Linux x64 AppImage SHA-256: `544644367a9e8a0927203cade9934875456ecfb08d332414eadd45fa5f6685e4`
+- Linux x64 DEB SHA-256: `84622570b7be0e0c79f832d6e228705bb61846f0ce70a3dcf95b416987c76585`
+- macOS arm64 DMG SHA-256: `a7c976ee812ff59db5cb28092ee38a002643f88ba802006040ebcd7869625467`
+- macOS arm64 ZIP SHA-256: `5bb877676e507cf8e3e3d90af69465bd00a834e907464bfb32805ef3ac33bd98`
+
+The release also contains updater metadata, blockmaps, per-platform checksum
+files, dependency hash, runtime manifests, and split downloadable Windows and
+Linux runtime archives. The final workflow verifier checked their names, sizes,
+digests, updater references, runtime reconstruction metadata, branding, and
+release commit before publication.
