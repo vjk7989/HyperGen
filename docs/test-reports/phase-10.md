@@ -55,4 +55,10 @@ Prepared asset:
 
 ## Repository and release
 
-The clean source snapshot is ready as a root commit. GitHub rejected the repository deletion because the current CLI token lacks the persistent `delete_repo` OAuth scope. The existing public repository remains intact until that scope is explicitly authorized. The final section will record the recreated repository, dependency release, Actions run, packages, and checksums.
+- Public repository: `https://github.com/vjk7989/HyperGen`
+- Clean root commit: `13ac6e0`
+- Repository remotes: HyperGen `origin` only
+- Runtime dependency release: `https://github.com/vjk7989/HyperGen/releases/tag/runtime-deps-v1`
+- Runtime asset public check: HTTP 200, 76,533,098 bytes
+
+The native preview workflow is the remaining release gate. This section will be updated with the Actions run, published package names, and release checksums after every platform succeeds.

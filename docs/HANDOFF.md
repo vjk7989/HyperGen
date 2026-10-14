@@ -13,6 +13,11 @@ documentation, UI assets, runtime logs, compatibility protocols, storage keys,
 and infrastructure links. Exact third-party model/provider identifiers and
 legal notices remain where technically or legally required.
 
+The public source repository was recreated from a clean HyperGen root history at
+`https://github.com/vjk7989/HyperGen`. The pinned Windows runtime dependency is
+published under the `runtime-deps-v1` prerelease and its public URL, size, and
+SHA-256 digest have been verified.
+
 ## Architecture map
 
 - `frontend/` contains the desktop renderer and remote browser UI.
