@@ -45,6 +45,20 @@ class ParentLifetime(Protocol):
     def close(self) -> None: ...
 
 
+class _WindowsFunction(Protocol):
+    argtypes: object
+    restype: object
+
+    def __call__(self, *args: object) -> int | None: ...
+
+
+class _Kernel32(Protocol):
+    CreateJobObjectW: _WindowsFunction
+    SetInformationJobObject: _WindowsFunction
+    AssignProcessToJobObject: _WindowsFunction
+    CloseHandle: _WindowsFunction
+
+
 class _JobObjectLifetime:
     def __init__(self, handle: int, close_handle: Callable[[int], int]) -> None:
         self._handle = handle
@@ -99,7 +113,10 @@ def attach_process_to_parent_lifetime(
             ("PeakJobMemoryUsed", ctypes.c_size_t),
         ]
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    win_dll = cast(Callable[..., object], getattr(ctypes, "WinDLL"))
+    win_error = cast(Callable[[int], OSError], getattr(ctypes, "WinError"))
+    get_last_error = cast(Callable[[], int], getattr(ctypes, "get_last_error"))
+    kernel32 = cast(_Kernel32, win_dll("kernel32", use_last_error=True))
     kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
     kernel32.CreateJobObjectW.restype = ctypes.c_void_p
     kernel32.SetInformationJobObject.argtypes = [
@@ -116,20 +133,22 @@ def attach_process_to_parent_lifetime(
 
     job_handle = kernel32.CreateJobObjectW(None, None)
     if not job_handle:
-        raise ctypes.WinError(ctypes.get_last_error())
+        raise win_error(get_last_error())
     try:
         info = _ExtendedLimitInformation()
         info.BasicLimitInformation.LimitFlags = 0x00002000  # KILL_ON_JOB_CLOSE
         if not kernel32.SetInformationJobObject(
             job_handle, 9, ctypes.byref(info), ctypes.sizeof(info)
         ):
-            raise ctypes.WinError(ctypes.get_last_error())
+            raise win_error(get_last_error())
         if not kernel32.AssignProcessToJobObject(job_handle, process_handle):
-            raise ctypes.WinError(ctypes.get_last_error())
+            raise win_error(get_last_error())
     except BaseException:
         kernel32.CloseHandle(job_handle)
         raise
-    return _JobObjectLifetime(job_handle, kernel32.CloseHandle)
+    return _JobObjectLifetime(
+        job_handle, lambda handle: int(kernel32.CloseHandle(handle) or 0)
+    )
 
 
 @dataclass(frozen=True)

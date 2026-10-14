@@ -62,3 +62,13 @@ Prepared asset:
 - Runtime asset public check: HTTP 200, 76,533,098 bytes
 
 The native preview workflow is the remaining release gate. This section will be updated with the Actions run, published package names, and release checksums after every platform succeeds.
+
+### Release run 38543293952
+
+The first run stopped in the quality gate before creating a draft release. Linux Pyright correctly rejected direct access to Windows-only `ctypes` members in `backend/remote/cloudflare_tunnel.py`. The Windows Job Object boundary now resolves those members dynamically behind typed protocols.
+
+Verification after the fix:
+
+- Native-platform Pyright: 0 errors
+- Linux-target Pyright: 0 errors
+- Cloudflare lifetime, tunnel, and controller tests: 15/15 passed

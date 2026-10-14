@@ -15,7 +15,7 @@ Updated: 2026-10-14
 | 10 | Run types, lint, formatting, branding, OpenAPI, and builds | Primary | Passed | TypeScript, Pyright, ESLint, format, branding, desktop and remote builds passed; OpenAPI regenerated | Recheck OpenAPI after clean commit |
 | 10 | Independent OpenCode verification | OpenCode coordinator | Passed | Active focused set 25/25 passed; branding and tracked-path scans passed | Preserve the written report |
 | 10 | Create a clean public `vjk7989/HyperGen` repository | Primary | Complete | New public repository created from root commit `13ac6e0`; only the HyperGen origin remains | Preserve the clean repository history |
-| 10 | Publish runtime dependency and native preview artifacts | Primary + GitHub Actions | In progress | `runtime-deps-v1` is public; asset size and SHA-256 verified; HTTP 200 | Dispatch release workflow and verify all native artifacts |
+| 10 | Publish runtime dependency and native preview artifacts | Primary + GitHub Actions | In progress | First quality run exposed Linux Pyright handling of Windows APIs; fix passes Windows/Linux targets and 15/15 focused tests | Rerun release workflow and verify all native artifacts |
 | 10 | Finalize handoff and test report | Primary | Pending | Draft documents exist | Add commit, release, checksums, and continuation commands |
 
 ## Rules carried forward
