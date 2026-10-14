@@ -1,0 +1,5 @@
+interface:
+  display_name: "HyperGen Video Editor Development"
+  short_description: "Guidance for editing the HyperGen video editor safely"
+  default_prompt: "Use $hypergen-video-editor-development to implement or review changes in the HyperGen video editor."
+

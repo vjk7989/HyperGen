@@ -1,0 +1,531 @@
+name: Release
+
+"on":
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version
+        required: true
+        default: 0.1.0-preview.1
+  push:
+    tags:
+      - "v0.1.0-preview.1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hypergen-release-v0.1.0-preview.1
+  cancel-in-progress: false
+
+env:
+  RELEASE_VERSION: ${{ inputs.version || '0.1.0-preview.1' }}
+  RELEASE_TAG: ${{ startsWith(github.ref_name, 'v') && github.ref_name || format('v{0}', inputs.version || '0.1.0-preview.1') }}
+
+jobs:
+  quality:
+    name: Release quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.9.26"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13.16"
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          cd backend
+          uv sync --frozen --extra test --extra dev
+      - name: Check release version
+        run: test "$(node -p "require('./package.json').version")" = "$RELEASE_VERSION"
+      - name: Run complete quality gate
+        run: |
+          pnpm format-check
+          pnpm typecheck:ts
+          pnpm typecheck:py
+          pnpm lint
+          pnpm branding:check
+          pnpm scripts:test
+          pnpm openapi:check
+          npm exec --yes --package=@nanonets/graft@0.21.1 -- graft build
+          npm exec --yes --package=@nanonets/graft@0.21.1 -- graft check
+          cd backend
+          uv run pytest -v --tb=short
+          cd ..
+          pnpm build:frontend
+
+  draft:
+    name: Create draft prerelease
+    needs: quality
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Create the single draft release
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true"
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+            release_id="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)"
+            test -n "$release_id"
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" --jq '.[].id' | while read -r asset_id; do
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "HyperGen $RELEASE_VERSION" \
+              --notes "Unsigned HyperGen preview for Windows x64, Linux x64, and macOS arm64." \
+              --draft=true \
+              --prerelease=true
+          else
+            if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+              git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+              test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+            fi
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "HyperGen $RELEASE_VERSION" \
+              --notes "Unsigned HyperGen preview for Windows x64, Linux x64, and macOS arm64." \
+              --draft \
+              --prerelease=true
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+          fi
+
+  build-windows:
+    name: Windows x64 package
+    needs: [quality, draft]
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Verify draft targets this commit
+        shell: bash
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true"
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13.16"
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.9.26"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          prune-cache: false
+      - name: Reclaim unused Windows runner space
+        shell: pwsh
+        run: |
+          foreach ($path in @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT, "C:\ghcup")) {
+            if ($path -and (Test-Path -LiteralPath $path)) {
+              Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          if (Get-Command docker -ErrorAction SilentlyContinue) {
+            try {
+              docker info *> $null
+              if ($LASTEXITCODE -eq 0) {
+                docker system prune --all --force
+                if ($LASTEXITCODE -ne 0) {
+                  Write-Warning "Optional Docker cleanup failed; continuing to the mandatory disk guard"
+                  $global:LASTEXITCODE = 0
+                }
+              } else {
+                Write-Warning "Docker daemon is unavailable; skipping optional cleanup"
+                $global:LASTEXITCODE = 0
+              }
+            } catch {
+              Write-Warning "Docker cleanup is unavailable; continuing to the mandatory disk guard"
+              $global:LASTEXITCODE = 0
+            }
+          }
+      - name: Confirm Windows runner capacity before runtime
+        shell: pwsh
+        run: |
+          $driveName = $env:GITHUB_WORKSPACE.Substring(0, 1)
+          $free = (Get-PSDrive -Name $driveName).Free
+          "Windows free space before runtime: $free bytes" | Add-Content $env:GITHUB_STEP_SUMMARY
+          if ($free -lt 10000000000) { throw "At least 10 GB free space is required" }
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Download Visual C++ runtime
+        shell: pwsh
+        run: Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile resources/vc_redist.x64.exe
+      - name: Prepare Windows Python runtime
+        shell: pwsh
+        run: .\scripts\prepare-python.ps1
+      - name: Package downloadable Windows runtime
+        run: >-
+          node scripts/package-python-runtime.mjs
+          --source python-embed
+          --output-dir release/runtime
+          --prefix python-embed-win32
+          --part-size 1900000000
+          --dependency backend/.python-version
+          --dependency backend/uv.lock
+          --dependency backend/pyproject.toml
+          --dependency scripts/prepare-python.ps1
+          --dependency scripts/prepare-python.sh
+          --hash-output python-deps-hash.txt
+      - name: Verify Windows runtime reconstruction
+        run: >-
+          node scripts/verify-release-artifacts.mjs
+          --manifest release/runtime/python-embed-win32.manifest.json
+          --parts-dir release/runtime
+      - name: Remove prepared Windows runtime
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath "$PWD/python-embed" -Recurse -Force
+          uv cache clean
+          New-Item -ItemType Directory -Force -Path $env:UV_CACHE_DIR | Out-Null
+      - name: Check Windows packaging disk budget
+        shell: pwsh
+        run: |
+          $driveName = $env:GITHUB_WORKSPACE.Substring(0, 1)
+          $free = (Get-PSDrive -Name $driveName).Free
+          "Windows free space before Electron packaging: $free bytes" | Add-Content $env:GITHUB_STEP_SUMMARY
+          if ($free -lt 21474836480) { throw "At least 20 GiB free space is required for Electron packaging" }
+      - name: Build Windows x64 package
+        run: |
+          pnpm prepare:cloudflared
+          pnpm build:frontend
+          pnpm exec electron-builder --win --x64 --publish never
+      - name: Verify Windows package metadata and branding
+        shell: pwsh
+        run: |
+          $installer = Get-Item "release/HyperGen-0.1.0-preview.1-Setup.exe"
+          if ($installer.VersionInfo.ProductName -ne "HyperGen") {
+            throw "Windows installer ProductName is not HyperGen"
+          }
+          $update = Get-Content "release/win-unpacked/resources/app-update.yml" -Raw
+          if (-not (Test-Path "release/win-unpacked/resources/cloudflared/cloudflared.exe")) {
+            throw "Windows package is missing cloudflared.exe"
+          }
+          foreach ($expected in @("provider: github", "owner: vjk7989", "repo: HyperGen", "channel: latest")) {
+            if (-not $update.Contains($expected)) { throw "Windows app-update.yml is missing $expected" }
+          }
+      - name: Verify Windows updater metadata locally
+        shell: pwsh
+        run: >-
+          node scripts/verify-release-artifacts.mjs
+          --updater-metadata release/latest.yml
+          --packages-dir release
+          --expected-version "$env:RELEASE_VERSION"
+      - name: Upload Windows assets to the draft
+        shell: pwsh
+        run: |
+          Copy-Item "release/runtime/SHA256SUMS" "release/runtime/python-embed-win32.SHA256SUMS"
+          $checksummed = @(
+            "release/HyperGen-0.1.0-preview.1-Setup.exe",
+            "release/HyperGen-0.1.0-preview.1-Setup.exe.blockmap",
+            "release/latest.yml",
+            "python-deps-hash.txt"
+          )
+          foreach ($file in $checksummed) {
+            $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
+            Add-Content "release/runtime/python-embed-win32.SHA256SUMS" "$hash  $(Split-Path $file -Leaf)"
+          }
+          $assets = @(
+            "release/HyperGen-0.1.0-preview.1-Setup.exe",
+            "release/HyperGen-0.1.0-preview.1-Setup.exe.blockmap",
+            "release/latest.yml",
+            "release/runtime/python-embed-win32.manifest.json",
+            "python-deps-hash.txt",
+            "release/runtime/python-embed-win32.SHA256SUMS"
+          )
+          $assets += Get-ChildItem "release/runtime/python-embed-win32.part*" | ForEach-Object FullName
+          "| Asset | Bytes |" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "| --- | ---: |" | Add-Content $env:GITHUB_STEP_SUMMARY
+          foreach ($asset in $assets) {
+            $item = Get-Item $asset
+            "| $($item.Name) | $($item.Length) |" | Add-Content $env:GITHUB_STEP_SUMMARY
+            if ($item.Length -ge 2000000000) {
+              throw "Release asset exceeds GitHub's safe upload limit: $asset"
+            }
+          }
+          gh release upload $env:RELEASE_TAG $assets --repo $env:GITHUB_REPOSITORY --clobber
+
+  build-linux:
+    name: Linux x64 packages
+    needs: [quality, draft]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Verify draft targets this commit
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true"
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.9.26"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          prune-cache: false
+      - name: Reclaim unused Linux runner space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          docker system prune --all --force || true
+      - name: Confirm Linux runner capacity before runtime
+        run: |
+          free_bytes="$(df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -n 1 | tr -d ' ')"
+          echo "Linux free space before runtime: $free_bytes bytes" >> "$GITHUB_STEP_SUMMARY"
+          test "$free_bytes" -ge 10000000000
+      - name: Install packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libarchive-tools rpm
+          pnpm install --frozen-lockfile
+      - name: Prepare Linux Python runtime
+        env:
+          ARCH: x86_64
+        run: bash scripts/prepare-python.sh
+      - name: Package downloadable Linux runtime
+        run: >-
+          node scripts/package-python-runtime.mjs
+          --source python-embed
+          --output-dir release/runtime
+          --prefix python-embed-linux-x64
+          --part-size 1900000000
+          --dependency backend/.python-version
+          --dependency backend/uv.lock
+          --dependency backend/pyproject.toml
+          --dependency scripts/prepare-python.ps1
+          --dependency scripts/prepare-python.sh
+          --hash-output python-deps-hash.txt
+      - name: Verify Linux runtime reconstruction
+        run: >-
+          node scripts/verify-release-artifacts.mjs
+          --manifest release/runtime/python-embed-linux-x64.manifest.json
+          --parts-dir release/runtime
+      - name: Remove prepared Linux runtime
+        run: |
+          rm -rf -- "$GITHUB_WORKSPACE/python-embed"
+          uv cache clean
+          mkdir -p "$UV_CACHE_DIR"
+      - name: Check Linux packaging disk budget
+        run: |
+          free_bytes="$(df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -n 1 | tr -d ' ')"
+          test "$free_bytes" -ge 21474836480
+          df -h "$GITHUB_WORKSPACE" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build Linux x64 packages
+        run: |
+          pnpm prepare:cloudflared
+          pnpm build:frontend
+          pnpm exec electron-builder --linux AppImage deb --x64 --publish never
+      - name: Verify Linux package metadata and branding
+        run: |
+          test -x release/linux-unpacked/hypergen
+          test -x release/linux-unpacked/resources/cloudflared/cloudflared
+          file release/linux-unpacked/hypergen | grep -q "ELF"
+          grep -Fq "provider: github" release/linux-unpacked/resources/app-update.yml
+          grep -Fq "owner: vjk7989" release/linux-unpacked/resources/app-update.yml
+          grep -Fq "repo: HyperGen" release/linux-unpacked/resources/app-update.yml
+          grep -Fq "channel: latest" release/linux-unpacked/resources/app-update.yml
+      - name: Verify Linux updater metadata locally
+        run: >-
+          node scripts/verify-release-artifacts.mjs
+          --updater-metadata release/latest-linux.yml
+          --packages-dir release
+          --expected-version "$RELEASE_VERSION"
+      - name: Upload Linux assets to the draft
+        run: |
+          cp release/runtime/SHA256SUMS release/runtime/python-embed-linux-x64.SHA256SUMS
+          for file in \
+            release/HyperGen-x86_64.AppImage \
+            release/HyperGen-amd64.deb \
+            release/latest-linux.yml; do
+            printf '%s  %s\n' "$(sha256sum "$file" | cut -d ' ' -f 1)" "$(basename "$file")" \
+              >> release/runtime/python-embed-linux-x64.SHA256SUMS
+          done
+          assets=(
+            release/HyperGen-x86_64.AppImage \
+            release/HyperGen-amd64.deb \
+            release/latest-linux.yml \
+            release/runtime/python-embed-linux-x64.manifest.json \
+            release/runtime/python-embed-linux-x64.part* \
+            release/runtime/python-embed-linux-x64.SHA256SUMS
+          )
+          printf '| Asset | Bytes |\n| --- | ---: |\n' >> "$GITHUB_STEP_SUMMARY"
+          for asset in "${assets[@]}"; do
+            size="$(stat -c %s "$asset")"
+            printf '| %s | %s |\n' "$(basename "$asset")" "$size" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$size" -ge 2000000000 ]; then
+              echo "Release asset exceeds GitHub's safe upload limit: $asset" >&2
+              exit 1
+            fi
+          done
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+
+  build-macos:
+    name: macOS arm64 packages
+    needs: [quality, draft]
+    runs-on: macos-15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Verify draft targets this commit
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true"
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.9.26"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          prune-cache: false
+      - name: Check macOS runner disk budget
+        run: |
+          free_bytes="$(df -k "$GITHUB_WORKSPACE" | tail -n 1 | awk '{printf "%.0f\n", $4 * 1024}')"
+          echo "macOS free space before runtime: $free_bytes bytes" >> "$GITHUB_STEP_SUMMARY"
+          test "$free_bytes" -ge 10000000000
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare bundled macOS runtime
+        env:
+          ARCH: arm64
+        run: bash scripts/prepare-python.sh
+      - name: Generate dependency hash
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFile } from "node:fs/promises";
+          import { computeDependencyHash } from "./scripts/release-artifacts.mjs";
+
+          const hash = await computeDependencyHash([
+            "backend/.python-version",
+            "backend/uv.lock",
+            "backend/pyproject.toml",
+            "scripts/prepare-python.ps1",
+            "scripts/prepare-python.sh",
+          ]);
+          await writeFile("python-deps-hash.txt", `${hash}\n`, "utf8");
+          NODE
+      - name: Reclaim macOS dependency cache
+        run: |
+          uv cache clean
+          mkdir -p "$UV_CACHE_DIR"
+          df -h "$GITHUB_WORKSPACE" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build unsigned macOS arm64 packages
+        run: |
+          pnpm prepare:cloudflared
+          pnpm build:frontend
+          pnpm exec electron-builder --mac dmg zip --arm64 --publish never
+      - name: Verify macOS package metadata, branding, and bundled runtime
+        run: |
+          app="release/mac-arm64/HyperGen.app"
+          test "$(plutil -extract CFBundleName raw "$app/Contents/Info.plist")" = "HyperGen"
+          test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = "io.github.vjk7989.hypergen"
+          test -x "$app/Contents/Resources/python/bin/python3"
+          test -x "$app/Contents/Resources/cloudflared/cloudflared"
+          grep -Fq "provider: github" "$app/Contents/Resources/app-update.yml"
+          grep -Fq "owner: vjk7989" "$app/Contents/Resources/app-update.yml"
+          grep -Fq "repo: HyperGen" "$app/Contents/Resources/app-update.yml"
+          grep -Fq "channel: latest" "$app/Contents/Resources/app-update.yml"
+      - name: Verify macOS updater metadata locally
+        run: >-
+          node scripts/verify-release-artifacts.mjs
+          --updater-metadata release/latest-mac.yml
+          --packages-dir release
+          --expected-version "$RELEASE_VERSION"
+      - name: Upload macOS assets to the draft
+        run: |
+          (
+            cd release
+            shasum -a 256 \
+              HyperGen-0.1.0-preview.1-arm64.dmg \
+              HyperGen-0.1.0-preview.1-arm64-mac.zip \
+              HyperGen-0.1.0-preview.1-arm64-mac.zip.blockmap \
+              latest-mac.yml \
+              > macos-arm64.SHA256SUMS
+          )
+          assets=(
+            release/HyperGen-0.1.0-preview.1-arm64.dmg \
+            release/HyperGen-0.1.0-preview.1-arm64-mac.zip \
+            release/HyperGen-0.1.0-preview.1-arm64-mac.zip.blockmap \
+            release/latest-mac.yml \
+            release/macos-arm64.SHA256SUMS
+          )
+          printf '| Asset | Bytes |\n| --- | ---: |\n' >> "$GITHUB_STEP_SUMMARY"
+          for asset in "${assets[@]}"; do
+            size="$(stat -f %z "$asset")"
+            printf '| %s | %s |\n' "$(basename "$asset")" "$size" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$size" -ge 2000000000 ]; then
+              echo "Release asset exceeds GitHub's safe upload limit: $asset" >&2
+              exit 1
+            fi
+          done
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+
+  release:
+    name: Verify and publish release
+    needs: [quality, build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Verify draft and tag target before final validation
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true"
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify remote installer metadata, runtimes, updater files, and checksums
+        run: >-
+          node scripts/verify-release-artifacts.mjs
+          --release-tag "$RELEASE_TAG"
+          --repo "$GITHUB_REPOSITORY"
+          --expected-commit "$GITHUB_SHA"
+          --contract electron/fixtures/hypergen-release-contract.json
+      - name: Publish verified prerelease
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true"
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=true
