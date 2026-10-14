@@ -66,6 +66,18 @@ and `NOTICES.md` must remain in source and packaged distributions.
   publishes DMG and ZIP.
 - Preview packages are unsigned.
 - Update metadata and runtime dependency downloads point to HyperGen releases.
+- The release workflow creates and verifies the exact remote release tag before
+  creating or reusing a draft. This is required because GitHub draft releases
+  do not create a fetchable Git tag by themselves.
+
+## Current release status
+
+- Runtime dependency release: `runtime-deps-v1` is public and verified.
+- Run `38543813493` passed the complete quality gate, then exposed the draft-tag
+  issue described above.
+- The exact-tag workflow fix and 31/31 release contract tests pass locally.
+- The next step is to push the fix, rerun `v0.1.0-preview.1`, and record the
+  published native assets and checksums here.
 
 ## Verification commands
 

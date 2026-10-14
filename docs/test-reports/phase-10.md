@@ -18,22 +18,22 @@ This phase removes inherited product identity from HyperGen-owned UI, source pat
 
 ## Verification
 
-| Gate | Result |
-| --- | --- |
-| Focused branding/deep-link tests | 34/34 passed |
-| Focused backend media/catalog tests | 49/49 passed |
-| Repaired storage/asset regressions | 13/13 passed |
-| Full Node suite | 1,504/1,504 passed |
-| Full Python suite | 2,536 passed; 13 skipped |
-| TypeScript typecheck | Passed |
-| Python Pyright | Passed, 0 errors |
-| ESLint | Passed |
-| Format check | Passed, 481 checked; 42 known debt files skipped by repository policy |
-| Product branding guard | Passed |
-| OpenAPI generation | Passed; generated title is `HyperGen Generation Server` |
-| Desktop and Remote production builds | Passed |
-| Graft build/check | 12,190 nodes, 32,772 edges; graph in sync |
-| Tracked-path scan | Zero legacy product-name paths |
+| Gate                                 | Result                                                                |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| Focused branding/deep-link tests     | 34/34 passed                                                          |
+| Focused backend media/catalog tests  | 49/49 passed                                                          |
+| Repaired storage/asset regressions   | 13/13 passed                                                          |
+| Full Node suite                      | 1,504/1,504 passed                                                    |
+| Full Python suite                    | 2,536 passed; 13 skipped                                              |
+| TypeScript typecheck                 | Passed                                                                |
+| Python Pyright                       | Passed, 0 errors                                                      |
+| ESLint                               | Passed                                                                |
+| Format check                         | Passed, 481 checked; 42 known debt files skipped by repository policy |
+| Product branding guard               | Passed                                                                |
+| OpenAPI generation                   | Passed; generated title is `HyperGen Generation Server`               |
+| Desktop and Remote production builds | Passed                                                                |
+| Graft build/check                    | 12,190 nodes, 32,772 edges; graph in sync                             |
+| Tracked-path scan                    | Zero legacy product-name paths                                        |
 
 ## OpenCode
 
@@ -72,3 +72,18 @@ Verification after the fix:
 - Native-platform Pyright: 0 errors
 - Linux-target Pyright: 0 errors
 - Cloudflare lifetime, tunnel, and controller tests: 15/15 passed
+
+### Release run 38543813493
+
+The second run passed the complete Linux quality gate, including all Node and
+Python tests, types, lint, formatting, branding, OpenAPI drift, Graft, and the
+frontend build. Draft creation then failed because GitHub does not materialize
+a Git tag for an unpublished draft release, while the workflow immediately
+tried to fetch that tag.
+
+The workflow now creates the exact remote tag at `GITHUB_SHA`, fetches it back,
+proves its commit, and only then creates or reuses the draft. Draft creation
+uses `--verify-tag`. A focused regression test verifies this ordering.
+
+- Release workflow contract tests: 31/31 passed
+- Formatting check for the regression test: passed

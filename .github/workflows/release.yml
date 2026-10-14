@@ -77,10 +77,18 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Create the single draft release
         run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$RELEASE_TAG" \
+              -f sha="$GITHUB_SHA" >/dev/null
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          fi
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true"
-            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
             release_id="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)"
             test -n "$release_id"
             gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" --jq '.[].id' | while read -r asset_id; do
@@ -90,22 +98,18 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "HyperGen $RELEASE_VERSION" \
               --notes "Unsigned HyperGen preview for Windows x64, Linux x64, and macOS arm64." \
+              --target "$GITHUB_SHA" \
               --draft=true \
               --prerelease=true
           else
-            if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-              git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-              test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
-            fi
             gh release create "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "HyperGen $RELEASE_VERSION" \
               --notes "Unsigned HyperGen preview for Windows x64, Linux x64, and macOS arm64." \
               --draft \
-              --prerelease=true
-            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+              --prerelease=true \
+              --verify-tag
           fi
 
   build-windows:

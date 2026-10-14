@@ -556,6 +556,43 @@ describe("HyperGen release workflow contract", () => {
     assert.match(releaseCommand, /gh release edit[^\n]*--draft=false/);
   });
 
+  it("creates and proves the exact remote tag before creating or reusing the draft", async () => {
+    const jobs = (await workflow()).jobs ?? {};
+    const command =
+      findStep(jobs.draft ?? {}, /Create the single draft release/i).run ?? "";
+
+    assert.match(
+      command,
+      /gh api --method POST "repos\/\$GITHUB_REPOSITORY\/git\/refs"\s*\\\s*-f ref="refs\/tags\/\$RELEASE_TAG"\s*\\\s*-f sha="\$GITHUB_SHA"/,
+      "a missing release tag must be created on the remote at the workflow commit",
+    );
+
+    const createTag = command.indexOf(
+      'gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs"',
+    );
+    const fetchCreatedTag = command.indexOf(
+      'git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"',
+      createTag,
+    );
+    const proveTag = command.indexOf(
+      'test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"',
+      fetchCreatedTag,
+    );
+    const inspectDraft = command.indexOf(
+      'gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"',
+      proveTag,
+    );
+    const createDraft = command.indexOf('gh release create "$RELEASE_TAG"', proveTag);
+    const reuseDraft = command.indexOf('gh release edit "$RELEASE_TAG"', proveTag);
+
+    assert.ok(createTag >= 0, "missing exact remote tag creation");
+    assert.ok(fetchCreatedTag > createTag, "created tag must be fetched from origin");
+    assert.ok(proveTag > fetchCreatedTag, "fetched tag must resolve to GITHUB_SHA");
+    assert.ok(inspectDraft > proveTag, "draft lookup must follow tag proof");
+    assert.ok(createDraft > proveTag, "draft creation must follow tag proof");
+    assert.ok(reuseDraft > proveTag, "draft reuse must follow tag proof");
+  });
+
   it("uses an authenticated draft-capable exact-tag lookup in every release job", async () => {
     const jobs = (await workflow()).jobs ?? {};
     for (const jobName of [
